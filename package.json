@@ -1,0 +1,20 @@
+{
+  "name": "wrike",
+  "version": "1.0.0",
+  "description": "webhook for google assistant",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "actions-on-google": "^2.9.1",
+    "axios": "^0.19.0",
+    "dateformat": "^3.0.3",
+    "dialogflow-fulfillment": "^0.6.1",
+    "es6-map": "^0.1.5",
+    "express": "^4.17.1",
+    "request": "^2.88.0"
+  }
+}

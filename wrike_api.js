@@ -3,94 +3,37 @@
 const https = require('https')
 const axios = require('axios')
 
-var options = {
-  hostname: 'www.wrike.com',
-  path: '/api/v4',
-  method: 'GET',
-  headers: {
-    Authorization: 'bearer auth_code'
-  }
-};
+// In the future there might be a need for custom queries
+async function get(path, token, additional_parameters) {
+  if(typeof additional_parameters !== 'undefined')
+    path += additional_parameters
 
-function sendRequest(options, body) {
-  return new Promise(function(resolve, reject) {
-    var req = https.request(options, function(res) {
-      // console.log("statusCode: ", res.statusCode);
-      // console.log("headers: ", res.headers);
-      var message = ''
-      res.on('data', (chunk) => {
-              message += chunk
-      });
-      res.on('end', () => {
-        resolve(JSON.parse(message)['data'])
-      })
-    }).on("error", (error) => {
-      console.log("Error sending request to wrike: " + error.message);
-    });
-    if (typeof body !== 'undefined') req.write(body)
-    req.end();
+  var data = await axios.get(path, {
+    headers: {
+      Authorization: 'bearer ' + token
+    },
   })
-}
 
-// fields=["metadata"] <=> {fields: ['metadata']}
-function addParameters(url, params) {
-  var parameters = '?'
-  for(var key in params){
-    parameters += key + '=' + params[key].toString()
-    parameters += '&'
-  }
-  parameters = parameters.slice(0, -1)
-
-  return url + parameters
+  return data['data']['data']
 }
 
 module.exports = {
   getFolderTree: async function(token, additional_parameters) {
-    options['headers']['Authorization'] = 'bearer ' + token;
-    options['path'] = '/api/v4/folders'
-    options['method'] = 'GET'
-
-    if(typeof params !== 'undefined')
-      options['path'] = addParameters(options['path'], parameters)
-
-    var data = await sendRequest(options)
-
-    return data
+    return get('https://www.wrike.com/api/v4/folders', token, additional_parameters)
   },
 
-  getFoldersInfo: async function(token, folderIdArray, additional_parameters) {
-    options['headers']['Authorization'] = 'bearer ' + token;
-    options['path'] = '/api/v4/folders'
-    options['method'] = 'GET'
-    let ids = ''
-    folderIdArray.forEach((folder) => {
-      ids += folder + ','
+  getFoldersInfo: async function(token, foldersID_array) {
+    var foldersID_string = '/'
+    foldersID_array.forEach((folder) => {
+      foldersID_string += folder + ','
     })
-    if(ids !== '') {
-      ids[ids.length - 1] = null
-      ids = '/' + ids
-    }
-    options += ids
+    foldersID_string = foldersID_string.slice(0, -1)
 
-    if(typeof params !== 'undefined')
-      options['path'] = addParameters(options['path'], parameters)
-
-    var data = await sendRequest(options)
-
-    return data
+    return get('https://www.wrike.com/api/v4/folders', token, foldersID_string)
   },
 
   getContacts: async function(token, additional_parameters) {
-    options['headers']['Authorization'] = 'bearer ' + token;
-    options['path'] = '/api/v4/contacts'
-    options['method'] = 'GET'
-
-    if(typeof params === 'true')
-      options['path'] = addParameters(options['path'], parameters)
-
-    var data = await sendRequest(options)
-
-    return data
+    return get('https://www.wrike.com/api/v4/contacts', token, additional_parameters)
   },
 
   getCurrentUser: async function(token, additional_parameters) {
@@ -104,39 +47,33 @@ module.exports = {
   },
 
   getTasks: async function(token, additional_parameters) {
-    options['headers']['Authorization'] = 'bearer ' + token;
-    options['path'] = '/api/v4/tasks'
-    options['method'] = 'GET'
-
-    if(typeof params !== 'undefined')
-      options['path'] = addParameters(options['path'], parameters)
-
-    var data = await sendRequest(options)
-
-    return data
+    return get('https://www.wrike.com/api/v4/tasks', token, additional_parameters)
   },
 
-  createTask: async function(token, name, description, responsable, folder, due) {
-    options['headers']['Authorization'] = 'bearer ' + token;
-    options['path'] = '/api/v4/folders/'
-    options['method'] = 'POST'
-    options['path'] += folder + '/tasks'
+  createTask: async function(token, name, description, responsible, folder, start, due) {
+    var post_message = 'title=' +  name
+    if (description !== '') post_message += '&description=' + description
+    if (responsible !== '') post_message += '&responsibles=["' + responsible + '"]'
+    if (folder !== '') post_message += '&parents=["' + folder + '"]'
+    if (due !== '' || start !== '') {
+      post_message += '&dates={'
+      if (start !== '') post_message += '"start":"' + start + '"'
+      if (start !== '' && due !== 'undefined') post_message += ','
+      if (due !== '') post_message += '"due":"' + due + '"'
+      post_message += '}'
+    }
 
-    var post_message = 'title=' +  name + '&description=' + description + '&responsibles=["' + responsable + '"]&parents=["' + folder + '"]'
-    if (typeof due !== 'undefined') post_message += '&dates={"due":"' + due + '"}'
+    var path = 'https://www.wrike.com/api/v4/folders/'
+    if (folder !== '') path += folder + '/tasks'
+    // Root folder
+    else path += 'IEABRDPJI7777777/tasks'
 
-    options['headers']['Content-Length'] = post_message.length // post_message.length
-    options['headers']['Content-Type'] = 'application/www-x-form-urlencoded'
-    options['headers']['Accept'] = '*/*'
-
-    axios.post('https://www.wrike.com' + options['path'], post_message, {headers: {Authorization: 'bearer ' + token}})
-    .then((res) => {
-      // console.log(`statusCode: ${res.statusCode}`)
-      // console.log(res)
+    var response = await axios.post(path, post_message, {
+      headers: {
+        Authorization: 'bearer ' + token
+      }
     })
-    .catch((error) => {
-      console.error(error)
-    })
+    return response
   }
 
 }

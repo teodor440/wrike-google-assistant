@@ -74,6 +74,32 @@ module.exports = {
       }
     })
     return response
-  }
+  },
+
+  createProject: async function(token, name, description, responsible, folder, start, due) {
+    var post_message = 'title=' +  name
+    if (description !== '') post_message += '&description=' + description
+
+    var currentUser = await module.exports.getCurrentUser(token)
+    post_message += '&project={ownerIds=["' + currentUser.id + '"'
+    if (responsible !== '') post_message += ',"' + responsible + '"]'
+    else post_message += ']'
+
+    if (start !== '') post_message += ',"startDate":"' + start + '"'
+    if (due !== '') post_message += ',"due":"' + due + '"'
+    post_message += '}'
+
+    var path = 'https://www.wrike.com/api/v4/folders/'
+    if (folder !== '') path += folder + '/folders'
+    // Root folder
+    else path += 'IEABRDPJI7777777/folders'
+
+    var response = await axios.post(path, post_message, {
+      headers: {
+        Authorization: 'bearer ' + token
+      }
+    })
+    return response
+  },
 
 }

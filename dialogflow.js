@@ -50,18 +50,18 @@ async function getUserSuggestions(token) {
 }
 
 // Parameters from context
-// It helps build the answer to show the client the details about the task he is creating
-function getTaskChecklist(parameters) {
+// It helps build the answer to show the client the details about the task/project he is creating
+function getActivityChecklist(parameters, isTask = true) {
   var items = {
-    'create_task': {title: 'Create task'},
-    'name': {title: 'Task name', description:parameters['name']},
-    'description': {title: 'Task description', description:parameters['description']},
-    'responsible': {title: (typeof parameters['responsible'] !== 'undefined') ? 'Task responsible' : 'Add a task responsible', description:parameters['responsible_name']},
-    'project': {title: (typeof parameters['project_name'] !== 'undefined') ? 'Task project' : 'Add task to a project', description:parameters['project_name']},
-    'start': {title: (typeof parameters['start'] !== 'undefined') ? 'Task start time' : 'Add starting time', description:parameters['start']},
-    'due': {title: (typeof parameters['due'] !== 'undefined') ? 'Task due' : 'Add a deadline', description:parameters['due']},
+    'create': {title: 'Create ' + (isTask ? 'task' : 'project')},
+    'name': {title: (isTask ? 'Task' : 'Project') + ' name', description:parameters['name']},
+    'description': {title: (isTask ? 'Task' : 'Project') + ' description', description:parameters['description']},
+    'responsible': {title: (typeof parameters['responsible'] !== 'undefined') ? (isTask ? 'Task' : 'Project') + ' responsible' : 'Add a task responsible', description:parameters['responsible_name']},
+    'project': {title: (typeof parameters['project_name'] !== 'undefined') ? (isTask ? 'Task' : 'Project') + ' parent' : 'Add ' (isTask ? 'task' : 'project') + ' to a folder', description:parameters['project_name']},
+    'start': {title: (typeof parameters['start'] !== 'undefined') ? (isTask ? 'Task' : 'Project') + ' beginning time' : 'Add beginning time', description:parameters['start']},
+    'due': {title: (typeof parameters['due'] !== 'undefined') ? (isTask ? 'Task' : 'Project') + ' deadline' : 'Add a deadline', description:parameters['due']},
   }
-  return new List({title: 'Task details', items:items})
+  return new List({title: (isTask ? 'Task' : 'Project') + ' details', items:items})
 }
 
 // Maybe check task types?
@@ -84,10 +84,10 @@ async function showDueActivities(conv, params, option, tasks = true) {
 
   var client_date = getLocalTime(new Date(), user.timezone)
   var date_limit = {}
-  if(params['date'] !== '') {
+  if(params['date']) {
     date_limit = getLocalTime(new Date(params['date']), user.timezone)
   }
-  else if (params['date-period'] !== '') {
+  else if (params['date-period']) {
     date_limit = getLocalTime(new Date(params['date-period']['endDate']), user.timezone)
   }
   else {
@@ -178,7 +178,7 @@ module.exports = {
     return showDueActivities(conv, params, option, true)
   },
 
-
+  // TASK MANAGEMENT INTENTS
   setTaskName: async function(conv, params, name) {
     var context_params = {
       'name': name,
@@ -188,7 +188,7 @@ module.exports = {
       'start': '',
       'due': ''
     }
-    conv.contexts.set(conv.contexts.set('task-context', 5, context_params));
+    conv.contexts.set(conv.contexts.set('task-context', 10, context_params));
 
     conv.add("Add a task description now")
   },
@@ -196,7 +196,7 @@ module.exports = {
   setTaskDescription: async function(conv, params, description) {
     var context_params = conv.contexts.get('task-context').parameters
     context_params['description'] = description
-    conv.contexts.set(conv.contexts.set('task-context', 5, context_params));
+    conv.contexts.set(conv.contexts.set('task-context', 10, context_params));
 
     try {
       var folder_suggestions = await getFolderSuggestions(conv.user.access.token)
@@ -211,6 +211,7 @@ module.exports = {
     conv.add(folder_suggestions)
   },
 
+  // Invoked by two intents
   setTaskProject: async function(conv, params, project_name) {
     try {
       var projects = await wrike_api.getFolderTree(conv.user.access.token)
@@ -232,16 +233,18 @@ module.exports = {
       var context_params = conv.contexts.get('task-context').parameters
       context_params['project'] = task_project
       context_params['project_name'] = project_name
-      conv.contexts.set('task-context', 5, context_params);
+      conv.contexts.set('task-context', 10, context_params);
 
-      if (conv. intent === 'Task folder assigning') {
+      if (conv.intent === 'Task folder assigning') {
         conv.add('Would you like to add or change details about this task?')
-        conv.add(getTaskChecklist(context_params))
+        conv.add(getActivityChecklist(context_params))
       }
       else if (conv.intent === 'Option changing') {
-        conv.contexts.set('Taskfolderassigning-followup', 1)
         conv.add('Parent folder changed to ' + project_name)
       }
+      conv.contexts.set('Taskfolderassigning-followup', 1)
+      // Folder found
+      return true
     }
     else {
       try {
@@ -255,8 +258,10 @@ module.exports = {
       conv.add(folder_suggestions)
       conv.add('There is no such project, try again')
       // Change text depending on the intent
-      if (conv.intent === 'Task folder assigning') conv.contexts.set('taskdescribing-followup', 1)
-      else if (conv.intent === 'Option chaning') conv.contexts.set('Changeoption-followup', 1)
+      if (conv.intent === 'Task folder assigning') conv.contexts.set('Taskdescribing-followup', 1)
+      else if (conv.intent === 'Task option changing') conv.contexts.set('Changetaskoption-followup', 1)
+      // Folder not found
+      return false
     }
   },
 
@@ -299,7 +304,7 @@ module.exports = {
     if (['name', 'description', 'responsible', 'project', 'start', 'due'].includes(to_update)) {
       var context_params = conv.contexts.get('task-context').parameters
       context_params['to_update'] = to_update
-      conv.contexts.set('task-context', 5, context_params);
+      conv.contexts.set('task-context', 10, context_params);
 
       var to_update_formatted = {
         'name': 'task name',
@@ -336,9 +341,9 @@ module.exports = {
         conv.add(suggestions)
       }
       // Next to changing options
-      conv.contexts.set('Changeoption-followup', 1)
+      conv.contexts.set('Changetaskoption-followup', 1)
     }
-    else if (to_update === 'create_task') {
+    else if (to_update === 'create') {
       try {
         await module.exports.createTask(conv, params, options)
       }
@@ -352,18 +357,20 @@ module.exports = {
     // If the user didn't parse the parameter (parameters cannot be made mandatory in dialogflow without two separate functions for this intent)
     else {
       conv.contexts.set('Taskfolderassigning-followup', 1)
-      conv.add('Sorry, I didn\'t catch that, do you want to create or modify the task?')
+      conv.add('Sorry, I didn\'t understand that, do you want to create or modify the task?')
     }
   },
 
   // At this stage the user is queried about requested parameter changes
   // Keeps context alive in case of user input problems
   changeTask: async function(conv, params, text) {
+    var answer = 'Would you like to add further modifications?'
     var context_params = conv.contexts.get('task-context').parameters
     var to_update = context_params['to_update']
     // NAME AND DESCRIPTION
     if (to_update === 'name' || to_update === 'description') {
       context_params[to_update] = text
+      conv.contexts.set('task-context', 10, context_params)
       conv.contexts.set('Taskfolderassigning-followup', 1)
     }
     // RESPONSIBLE
@@ -388,13 +395,13 @@ module.exports = {
         var context_params = conv.contexts.get('task-context').parameters
         context_params['responsible'] = userid
         context_params['responsible_name'] = responsible
-        conv.contexts.set('task-context', 5, context_params);
+        conv.contexts.set('task-context', 10, context_params);
         conv.add('Responsible changed to ' + responsible)
         // Back to showing task details
         conv.contexts.set('Taskfolderassigning-followup', 1)
       }
       else {
-        conv.add('There is no such person, try again')
+        answer = 'There is no such person, try again'
         try {
           var user_suggestions = await getUserSuggestions(conv.user.access.token)
         }
@@ -407,13 +414,13 @@ module.exports = {
 
         conv.add(user_suggestions)
         // Try again
-        conv.contexts.set('Changeoption-followup', 1)
+        conv.contexts.set('Changetaskoption-followup', 1)
       }
     }
     // PROJECT
     else if (to_update === 'project') {
       try {
-        await module.exports.setTaskProject(conv, params, text)
+        var found = await module.exports.setTaskProject(conv, params, text)
       }
       catch(err) {
         conv.add('Sorry, a server connection error occured')
@@ -421,49 +428,356 @@ module.exports = {
         console.log(err)
         return
       }
+      if (!found) answer = ''
     }
     // START
     else if (to_update === 'start') {
       var date = undefined
-      if (params['date'] !== '') date = new Date(params['date'])
-      else if (params['date-period'] != '') {
+      if (params['date']) date = new Date(params['date'])
+      else if (params['date-period']) {
         if (params['date-period']['endDate'] != '') date = new Date(params['date-period']['endDate'])
         if (params['date-period']['startDate'] != '') date = new Date(params['date-period']['startDate'])
       }
       else {
-        conv.add('Sorry, couldn\'t set up the beginning date')
+        conv.add('Sorry, I couldn\'t set up the beginning date, try again')
+        conv.contexts.set('Changetaskoption-followup', 1)
+        console.log(params['date'])
+        console.log(params['date-period'])
+        return
       }
       if(typeof date !== 'undefined') var task_start = dateFormat(date, "yyyy-mm-dd");
 
       var context_params = conv.contexts.get('task-context').parameters
       context_params['start'] = task_start
-      conv.contexts.set('task-context', 5, context_params);
+      conv.contexts.set('task-context', 10, context_params);
       conv.contexts.set('Taskfolderassigning-followup', 1)
     }
     // DUE
     else if (to_update === 'due') {
       var date = undefined
-      if (params['date'] !== '') date = new Date(params['date'])
-      else if (params['date-period'] != '') {
+      if (params['date']) date = new Date(params['date'])
+      else if (params['date-period']) {
         if (params['date-period']['startDate'] != '') date = new Date(params['date-period']['startDate'])
         if (params['date-period']['endDate'] != '') date = new Date(params['date-period']['endDate'])
       }
       else {
-        conv.add('Sorry, we couldn\'t set up the deadline')
+        conv.add('Sorry, I couldn\'t set up the deadline, try again')
+        conv.contexts.set('Changetaskoption-followup', 1)
+        return
       }
       if(typeof date !== 'undefined') var task_due = dateFormat(date, "yyyy-mm-dd");
 
       var context_params = conv.contexts.get('task-context').parameters
       context_params['due'] = task_due
-      conv.contexts.set('task-context', 5, context_params);
+      conv.contexts.set('task-context', 10, context_params);
       conv.contexts.set('Taskfolderassigning-followup', 1)
     }
     else {
       conv.add('Sorry, something went wrong, would you like to create the task as it is or try to modify again a value?')
-
       return
     }
-    conv.ask('Would you like to add further modifications?')
-    conv.add(getTaskChecklist(context_params))
+    if (answer !== '') conv.add(answer)
+    conv.add(getActivityChecklist(context_params))
   },
+  // END OF TASK MANAGEMENT INTENTS
+
+  // PROJECT MANAGEMENT INTENTS
+  setProjectName: async function(conv, params, name) {
+    var context_params = {
+      'name': name,
+      'description': '',
+      'responsible': '',
+      'project': '',
+      'start': '',
+      'due': ''
+    }
+    conv.contexts.set('project-context', 10, context_params);
+
+    conv.add("Add a project description now")
+  },
+
+  setProjectDescription: async function(conv, params, description) {
+    var context_params = conv.contexts.get('project-context').parameters
+    context_params['description'] = description
+    conv.contexts.set('project-context', 10, context_params);
+
+    try {
+      var folder_suggestions = await getFolderSuggestions(conv.user.access.token)
+    }
+    catch(err) {
+      conv.add('Sorry, a server connection error occured')
+      console.log(err)
+      return
+    }
+
+    conv.add('Where should this project be placed?')
+    conv.add(folder_suggestions)
+  },
+
+  setProjectFolder: async function(conv, params, project_name) {
+    try {
+      var projects = await wrike_api.getFolderTree(conv.user.access.token)
+    }
+    catch(err) {
+      conv.add('Sorry, a server connection error occured')
+      console.log(err)
+      return
+    }
+
+    var project_project = ''
+    projects.forEach((project) => {
+      if (project.title.toLowerCase() === project_name.toLowerCase()) {
+        project_project = project.id
+      }
+    })
+
+    if (project_project !== '') {
+      var context_params = conv.contexts.get('project-context').parameters
+      context_params['project'] = project_project
+      context_params['project_name'] = project_name
+      conv.contexts.set('project-context', 10, context_params);
+
+      if (conv. intent === 'Project folder assigning') {
+        conv.add('Would you like to add or change details about this project?')
+        conv.add(getActivityChecklist(context_params, false))
+      }
+      else if (conv.intent === 'Option changing') {
+        conv.add('Parent folder changed to ' + project_name)
+      }
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+      // Folder found
+      return true
+    }
+    else {
+      try {
+        var folder_suggestions = await getFolderSuggestions(conv.user.access.token)
+      }
+      catch(err) {
+        conv.add('Sorry, a server connection error occured')
+        console.log(err)
+        return
+      }
+      conv.add(folder_suggestions)
+      conv.add('There is no such folder, try again')
+      // Change text depending on the intent
+      if (conv.intent === 'Project folder assigning') conv.contexts.set('Projectdescribing-followup', 1)
+      else if (conv.intent === 'Project option changing') conv.contexts.set('Changeprojectoption-followup', 1)
+      return false
+    }
+  },
+
+  // Create project from context parameters
+  createProject: async function(conv, params, options) {
+    var context_params = conv.contexts.get('project-context').parameters
+    var project_name = context_params['name']
+    var project_description = context_params['description']
+    var project_responsible = context_params['responsible']
+    var project_folder = context_params['project']
+    var project_start = context_params['start']
+    var project_due = context_params['due']
+
+    try {
+      await wrike_api.createProject(conv.user.access.token, project_name, project_description, project_responsible, project_folder, project_start, project_due)
+    }
+    catch(err) {
+      conv.add('Sorry, a server connection error occured')
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+      console.log(err)
+      return
+    }
+    conv.add('Project created sucessfully')
+  },
+
+  // Here the user is shown the parameters entered for the project and is asked if wants to do further modifications
+  checkProject: async function(conv, params, options) {
+    var context_params = conv.contexts.get('project-context').parameters
+    var project_name = context_params['name']
+    var project_description = context_params['description']
+    var project_responsible = context_params['responsible']
+    var project_folder = context_params['project']
+    var project_start = context_params['start']
+    var project_due = context_params['due']
+
+    var to_update = ''
+    if (params['TaskProperty'] !== '') to_update = params['TaskProperty']
+    else to_update = options
+
+    if (['name', 'description', 'responsible', 'project', 'start', 'due'].includes(to_update)) {
+      var context_params = conv.contexts.get('project-context').parameters
+      context_params['to_update'] = to_update
+      conv.contexts.set('project-context', 10, context_params);
+
+      var to_update_formatted = {
+        'name': 'project name',
+        'description': 'description',
+        'responsible': 'person assigned',
+        'project': 'parent folder',
+        'start': 'beginning period',
+        'due': 'deadline'
+      }
+      conv.add('Ok, tell me the new ' + to_update_formatted[to_update])
+      // Give user suggestions
+      if (to_update === 'project') {
+        try {
+          var suggestions = await getFolderSuggestions(conv.user.access.token)
+        }
+        catch(err) {
+          conv.add('Sorry, a server connection error occured')
+          conv.contexts.set('Projectfolderassigning-followup', 1)
+          console.log(err)
+          return
+        }
+        conv.add(suggestions)
+      }
+      else if (to_update === 'responsible'){
+        try {
+          var suggestions = await getUserSuggestions(conv.user.access.token)
+        }
+        catch(err) {
+          conv.add('Sorry, a server connection error occured')
+          conv.contexts.set('Projectfolderassigning-followup', 1)
+          console.log(err)
+          return
+        }
+        conv.add(suggestions)
+      }
+      // Next to changing options
+      conv.contexts.set('Changeprojectoption-followup', 1)
+    }
+    else if (to_update === 'create') {
+      console.log('ok')
+      try {
+        await module.exports.createProject(conv, params, options)
+      }
+      catch(err) {
+        conv.add('Sorry, a server connection error occured')
+        conv.contexts.set('Projectfolderassigning-followup', 1)
+        console.log(err)
+        return
+      }
+    }
+    // If the user didn't parse the parameter (parameters cannot be made mandatory in dialogflow without two separate functions for this intent)
+    else {
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+      conv.add('Sorry, I didn\'t catch that, do you want to create or modify the project?')
+    }
+  },
+
+  // At this stage the user is queried about requested parameter changes
+  // Keeps context alive in case of user input problems
+  changeProject: async function(conv, params, text) {
+    var answer = 'Would you like to add further modifications?'
+    var context_params = conv.contexts.get('project-context').parameters
+    var to_update = context_params['to_update']
+    // NAME AND DESCRIPTION
+    if (to_update === 'name' || to_update === 'description') {
+      context_params[to_update] = text
+      conv.contexts.set('project-context', 10, context_params);
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+    }
+    // RESPONSIBLE
+    else if (to_update === 'responsible') {
+      try {
+        var users = await wrike_api.getContacts(conv.user.access.token)
+      }
+      catch(err) {
+        conv.add('Sorry, a server connection error occured')
+        conv.contexts.set('Projectfolderassigning-followup', 1)
+        console.log(err)
+        return
+      }
+      var responsible = text
+      var userid = ''
+      users.forEach((user) => {
+        if ((user.firstName + ' ' + user.lastName).toLowerCase() === responsible.toLowerCase() || (user.lastName + ' ' + user.firstName).toLowerCase() === responsible.toLowerCase()) {
+          userid = user.id
+        }
+      })
+      if(userid !== '') {
+        var context_params = conv.contexts.get('project-context').parameters
+        context_params['responsible'] = userid
+        context_params['responsible_name'] = responsible
+        conv.contexts.set('project-context', 10, context_params)
+        conv.add('Responsible changed to ' + responsible)
+        // Back to showing project details
+        conv.contexts.set('Projectfolderassigning-followup', 1)
+      }
+      else {
+        answer = 'There is no such person, try again'
+        try {
+          var user_suggestions = await getUserSuggestions(conv.user.access.token)
+        }
+        catch(err) {
+          conv.add('Sorry, a server connection error occured')
+          conv.contexts.set('Projectfolderassigning-followup', 1)
+          console.log(err)
+          return
+        }
+
+        conv.add(user_suggestions)
+        // Try again
+        conv.contexts.set('Changeprojectoption-followup', 1)
+      }
+    }
+    // PROJECT
+    else if (to_update === 'project') {
+      try {
+        var found = await module.exports.setProjectFolder(conv, params, text)
+      }
+      catch(err) {
+        conv.add('Sorry, a server connection error occured')
+        conv.contexts.set('Projectfolderassigning-followup', 1)
+        console.log(err)
+        return
+      }
+      if(!found) answer = ''
+    }
+    // START
+    else if (to_update === 'start') {
+      var date = undefined
+      if (params['date']) date = new Date(params['date'])
+      else if (params['date-period']) {
+        if (params['date-period']['endDate'] != '') date = new Date(params['date-period']['endDate'])
+        if (params['date-period']['startDate'] != '') date = new Date(params['date-period']['startDate'])
+      }
+      else {
+        conv.add('Sorry, I couldn\'t set up the beginning date, try again')
+        conv.contexts.set('Changeprojectoption-followup', 1)
+        return
+      }
+      if(typeof date !== 'undefined') var project_start = dateFormat(date, "yyyy-mm-dd");
+
+      var context_params = conv.contexts.get('project-context').parameters
+      context_params['start'] = project_start
+      conv.contexts.set('project-context', 10, context_params);
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+    }
+    // DUE
+    else if (to_update === 'due') {
+      var date = undefined
+      if (params['date']) date = new Date(params['date'])
+      else if (params['date-period']) {
+        if (params['date-period']['startDate'] != '') date = new Date(params['date-period']['startDate'])
+        if (params['date-period']['endDate'] != '') date = new Date(params['date-period']['endDate'])
+      }
+      else {
+        conv.add('Sorry, we couldn\'t set up the deadline, try again')
+        conv.contexts.set('Changeprojectoption-followup', 1)
+        return
+      }
+      if(typeof date !== 'undefined') var project_due = dateFormat(date, "yyyy-mm-dd");
+
+      var context_params = conv.contexts.get('project-context').parameters
+      context_params['due'] = project_due
+      conv.contexts.set('project-context', 10, context_params);
+      conv.contexts.set('Projectfolderassigning-followup', 1)
+    }
+    else {
+      conv.add('Sorry, something went wrong, would you like to create the project as it is or try to modify again a value?')
+      return
+    }
+    if (answer !== '') conv.add(answer)
+    conv.add(getActivityChecklist(context_params, false))
+  },
+  // END OF PROJECT MANAGEMENT INTENTS
 }

@@ -8,7 +8,7 @@ const bodyParser = require('body-parser')
 const server = express().use(bodyParser.json())
 const dialog = require('./dialogflow')
 const fs = require('fs');
-const port = 8080;
+const port = 7869;
 
 // MANAGE INTENTS
 // Import the appropriate service and chosen wrappers

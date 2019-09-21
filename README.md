@@ -10,3 +10,6 @@ This is a nodejs webhook implementation needed by google to fulfill user intents
 
 ## Dialogflow
 [Agent link](https://drive.google.com/open?id=19awfq-TbiamMpX2NttbCXTqYLzEZ2qQp)
+
+## Deployment  
+[Deployment instructions tutorial](https://youtu.be/ueScs8EheY4)
